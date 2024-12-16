@@ -11,9 +11,9 @@ import streamlit as st
 import pickle
 
 # Load model
-model1 = pickle.load(open('prediksi_mobil.sav', 'rb'))
-model2 = pickle.load(open('prediksi_mobil.sav', 'rb'))
-model3 = pickle.load(open('prediksi_mobil.sav', 'rb'))
+model1 = pickle.load(open('rf_modelPrice.sav', 'rb'))
+model2 = pickle.load(open('rf_modelStock.sav', 'rb'))
+model3 = pickle.load(open('rf_modelPopu.sav', 'rb'))
 
 # Antarmuka Streamlit
 def main():
