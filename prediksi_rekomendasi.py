@@ -11,13 +11,13 @@ import streamlit as st
 import pickle
 
 # Load model
-with open('rf_modelStock.pkl', 'rb') as f:
+with open('rf_modelStock.sav', 'rb') as f:
     rf_modelStock = pickle.load(f)
 
-with open('rf_modelPrice.pkl', 'rb') as f:
+with open('rf_modelPrice.sav', 'rb') as f:
     rf_modelPrice = pickle.load(f)
 
-with open('rf_modelPopu.pkl', 'rb') as f:
+with open('rf_modelPopu.sav', 'rb') as f:
     rf_modelPopu = pickle.load(f)
 
 # Antarmuka Streamlit
