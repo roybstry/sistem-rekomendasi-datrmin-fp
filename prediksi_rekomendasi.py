@@ -9,35 +9,88 @@ Original file is located at
 
 import streamlit as st
 import pickle
+import pandas as pd
+import numpy as np
 
 # Load model
-model1 = pickle.load(open('rf_modelPrice.sav', 'rb'))
-model2 = pickle.load(open('rf_modelStock.sav', 'rb'))
-model3 = pickle.load(open('rf_modelPopu.sav', 'rb'))
+@st.cache_data
+def load_model():
+    with open('rf_modelStock.pkl', 'rb') as f:
+        rf_modelStock = pickle.load(f)
+    with open('rf_modelPrice.pkl', 'rb') as f:
+        rf_modelPrice = pickle.load(f)
+    with open('rf_modelPopu.pkl', 'rb') as f:
+        rf_modelPopu = pickle.load(f)
+    return rf_modelStock, rf_modelPrice, rf_modelPopu
+
+rf_modelStock, rf_modelPrice, rf_modelPopu = load_model()
+
+# Kategori produk
+categories = [
+    'Elektronik', 'Lainnya', 'Perawatan Pribadi', 'Olahraga & Outdoor',
+    'Peralatan Rumah Tangga', 'Pakaian & Fashion', 'Kendaraan & Aksesori',
+    'Makanan & Minuman', 'Perhiasan & Aksesori', 'Mainan & Anak-Anak',
+    'Gadget & Elektronik Musik'
+]
+
+# Fungsi prediksi
+def prediction(df):
+    # Feature engineering
+    df['avg_harga_per_kategori'] = df.groupby('kategori')['harga'].transform('mean')
+    df['harga_per_rating'] = df['harga'] / (df['total_rating'] + 1)
+    df['harga_terjual'] = df['harga'] * df['terjual']
+    df['rasio_penjualan_stok'] = df['terjual'] / (df['stock'] + 1)
+    df['stok_terjual_ratio'] = df['stock'] / (df['terjual'] + 1)
+    df['stok_ideal'] = np.ceil(df['stok_terjual_ratio'] * df['stock'])
+
+    # Model predictions
+    df['harga_kategori_encoding'] = rf_modelPrice.predict(df[['avg_harga_per_kategori', 'harga_per_rating', 'harga_terjual']])
+    df['restock_encoding'] = rf_modelStock.predict(df[['stok_ideal', 'stok_terjual_ratio', 'rasio_penjualan_stok']])
+    df['popularitas_encoding'] = rf_modelPopu.predict(df[['harga_per_rating', 'rasio_penjualan_stok', 'total_rating']])
+
+    # Mapping
+    harga_kategori_mapping = {0: 'Rendah', 1: 'Sedang', 2: 'Tinggi'}
+    restock_mapping = {1: 'Tidak Restock', 2: 'Restock', 0: 'Stok Berlebih'}
+    popularitas_mapping = {0: 'Tidak Populer', 1: 'Populer', 2: 'Sangat Populer'}
+
+    df['harga_kategori'] = df['harga_kategori_encoding'].map(harga_kategori_mapping)
+    df['restock'] = df['restock_encoding'].map(restock_mapping)
+    df['popularitas'] = df['popularitas_encoding'].map(popularitas_mapping)
+
+    # Rekomendasi
+    def rekomendasi(row):
+        if row['restock'] == 'Restock':
+            return "Segera lakukan restock produk ini."
+        elif row['harga_kategori'] == 'Tinggi' and row['popularitas'] == 'Sangat Populer':
+            return "Lakukan promosi pada produk populer ini."
+        elif row['restock'] == 'Tidak Restock' and row['harga_kategori'] == 'Rendah':
+            return "Evaluasi produk untuk diskon atau hapus dari katalog."
+        elif row['popularitas'] == 'Tidak Populer' and row['restock'] == 'Stok Berlebih':
+            return "Tunda restock produk ini dan evaluasi penjualannya."
+        elif row['popularitas'] == 'Populer' and row['harga_kategori'] == 'Sedang':
+            return "Pertahankan produk dengan harga dan popularitas saat ini."
+        else:
+            return "Pertahankan strategi saat ini."
+
+    df['Rekomendasi'] = df.apply(rekomendasi, axis=1)
+    return df[['nama_produk', 'harga_kategori', 'restock', 'popularitas', 'Rekomendasi']]
 
 # Antarmuka Streamlit
 def main():
+    st.set_page_config(page_title="Sistem Rekomendasi Produk", layout="centered")
     st.title("Sistem Rekomendasi Produk")
-    st.markdown("""
+    st.write("### Aplikasi Analisis dan Rekomendasi Produk")
 
-    Aplikasi Analisis dan Rekomendasi Produk
+    # Form input
+    st.sidebar.header("Input Data Produk")
+    nama_produk = st.sidebar.text_input("Nama Produk", "")
+    kategori = st.sidebar.selectbox("Pilih Kategori", categories)
+    harga = st.sidebar.number_input("Harga", min_value=0, step=1000, value=0)
+    total_rating = st.sidebar.number_input("Total Rating", min_value=0, step=1, value=0)
+    terjual = st.sidebar.number_input("Jumlah Terjual", min_value=0, step=1, value=0)
+    stock = st.sidebar.number_input("Stock", min_value=0, step=1, value=0)
 
-    """, unsafe_allow_html=True)
-
-    with st.form(key='my_form'):
-        nama_produk = st.text_input("Nama Produk")
-        kategori = st.selectbox("Pilih Kategori", categories)
-        harga = st.number_input("Harga", min_value=0, step=1000)
-        total_rating = st.number_input("Total Rating", min_value=0, step=1)
-        min_terjual = total_rating if total_rating > 0 else 0
-        terjual = st.number_input("Jumlah Terjual", min_value=min_terjual, step=1)
-        stock = st.number_input("Stock", min_value=0, step=1)
-
-        # Tombol submit form
-        submit_button = st.form_submit_button(label="Proses Rekomendasi")
-
-    # Logika setelah tombol diklik
-    if submit_button:
+    if st.sidebar.button("Proses Rekomendasi"):
         kategori_index = categories.index(kategori) + 1  # Konversi ke indeks kategori numerik
         data_input = {
             'nama_produk': [nama_produk],
@@ -49,10 +102,12 @@ def main():
         }
         df = pd.DataFrame(data_input)
         hasil = prediction(df)
+
         st.success("Berikut adalah hasil analisis produk:")
-        st.dataframe(hasil)
+        st.table(hasil)
     else:
-        st.info("Isi form di atas dan tekan tombol 'Proses Rekomendasi' untuk melihat hasil analisis.")
+        st.info("Masukkan data produk di sidebar dan klik 'Proses Rekomendasi' untuk hasil analisis.")
 
 if __name__ == '__main__':
     main()
+
